@@ -1,0 +1,6 @@
+apiVersion: v2
+name: golden-path
+description: Golden Path — Hello World service with ALB, HPA, and External Secrets
+type: application
+version: 0.1.0
+appVersion: "latest"

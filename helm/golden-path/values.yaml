@@ -1,0 +1,128 @@
+##############################################################################
+# Default values — override in CI or per-environment values files
+##############################################################################
+
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "stable-alpine"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ─── Service Account (IRSA) ───────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: "golden-path-app"
+  # Annotation injected by the CI workflow from terraform output
+  annotations:
+    eks.amazonaws.com/role-arn: ""  # Set via --set in CI
+
+# ─── Service ─────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+# ─── Ingress / ALB ───────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    # Uncomment to enable HTTPS:
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/...
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+  hosts:
+    - host: ""   # empty = ALB auto-generated hostname
+      paths:
+        - path: /
+          pathType: Prefix
+
+# ─── Resources ───────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# ─── HPA ─────────────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ─── Pod scheduling — prefer Spot, tolerate On-Demand fallback ───────────────
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+            - key: node-type
+              operator: In
+              values: ["spot"]
+      - weight: 20
+        preference:
+          matchExpressions:
+            - key: node-type
+              operator: In
+              values: ["on-demand"]
+
+# On-Demand nodes have a taint; tolerate it so pods CAN run there as a fallback
+tolerations:
+  - key: "node-type"
+    operator: "Equal"
+    value: "on-demand"
+    effect: "NoSchedule"
+
+# Spread across AZs for HA
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: golden-path
+
+# ─── External Secret (DB Password) ───────────────────────────────────────────
+externalSecret:
+  enabled: true
+  secretStoreName: aws-secretsmanager
+  awsSecretName: "golden-path/production/db-password"
+  refreshInterval: "1h"
+  # The secret will be mounted as env var DB_PASSWORD in the container
+
+# ─── Probes ──────────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /
+    port: 80
+  initialDelaySeconds: 10
+  periodSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: 80
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# ─── Pod Disruption Budget ────────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

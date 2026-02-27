@@ -1,0 +1,151 @@
+##############################################################################
+# Service
+##############################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "golden-path.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "golden-path.selectorLabels" . | nindent 4 }}
+
+---
+##############################################################################
+# Ingress (AWS ALB via Load Balancer Controller)
+##############################################################################
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "golden-path.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "golden-path.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+
+---
+##############################################################################
+# Horizontal Pod Autoscaler
+##############################################################################
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "golden-path.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "golden-path.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}
+
+---
+##############################################################################
+# ServiceAccount (IRSA annotation added by CI --set)
+##############################################################################
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.serviceAccount.annotations | nindent 4 }}
+{{- end }}
+
+---
+##############################################################################
+# ExternalSecret — syncs DB password from AWS Secrets Manager → K8s Secret
+##############################################################################
+{{- if .Values.externalSecret.enabled }}
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: {{ include "golden-path.fullname" . }}-db-secret
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+spec:
+  refreshInterval: {{ .Values.externalSecret.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecret.secretStoreName }}
+    kind: ClusterSecretStore
+  target:
+    name: {{ include "golden-path.fullname" . }}-db-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: password
+      remoteRef:
+        key: {{ .Values.externalSecret.awsSecretName }}
+        property: password
+    - secretKey: username
+      remoteRef:
+        key: {{ .Values.externalSecret.awsSecretName }}
+        property: username
+{{- end }}
+
+---
+##############################################################################
+# PodDisruptionBudget — ensures at least 1 pod during node drains/rollouts
+##############################################################################
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "golden-path.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "golden-path.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "golden-path.selectorLabels" . | nindent 6 }}
+{{- end }}

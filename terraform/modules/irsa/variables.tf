@@ -1,0 +1,12 @@
+variable "cluster_name"                     { type = string }
+variable "cluster_oidc_issuer_url"          { type = string }
+variable "oidc_provider_arn"                { type = string }
+variable "aws_account_id"                   { type = string }
+variable "aws_region"                       { type = string }
+variable "app_namespace"                    { type = string }
+variable "app_service_account_name"         { type = string }
+variable "alb_controller_namespace"         { type = string }
+variable "alb_controller_service_account"   { type = string }
+variable "external_secrets_namespace"       { type = string }
+variable "external_secrets_service_account" { type = string }
+variable "s3_bucket_arn"                    { type = string }

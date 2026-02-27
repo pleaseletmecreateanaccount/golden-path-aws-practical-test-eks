@@ -1,0 +1,149 @@
+##############################################################################
+# Destroy Workflow — Tear down everything to avoid AWS costs during testing
+#
+# Triggers:
+#   • Manual only (workflow_dispatch) — intentional, never auto-destroy
+#
+# What it does:
+#   1. Deletes the Helm release (removes ALB, pods, etc.)
+#   2. Runs terraform destroy on all infrastructure
+#
+# WARNING: This is irreversible. S3 state bucket is NOT deleted.
+##############################################################################
+
+name: 💣 Destroy — Tear Down All Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DESTROY to confirm you want to tear down everything"
+        required: true
+        type: string
+      destroy_app_only:
+        description: "Only destroy the Helm app (keep infrastructure)"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION:     ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID || '825566110381' }}
+  TF_DIR:         terraform/environments/production
+  CLUSTER_NAME:   golden-path-production
+  APP_NAMESPACE:  golden-path
+  HELM_RELEASE:   golden-path
+
+jobs:
+  ##############################################################################
+  # Safety gate — abort if the confirmation string is wrong
+  ##############################################################################
+  confirm:
+    name: 🔒 Confirm Destroy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
+            echo "❌ Confirmation failed. You must type DESTROY to proceed."
+            exit 1
+          fi
+          echo "✅ Confirmed. Proceeding with destroy."
+
+  ##############################################################################
+  # Uninstall Helm release (removes ALB, pods, services)
+  ##############################################################################
+  destroy-app:
+    name: 🗑️ Uninstall Helm Release
+    runs-on: ubuntu-latest
+    needs: confirm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: "3.14.0"
+
+      - name: Uninstall Helm release
+        run: |
+          if helm status ${{ env.HELM_RELEASE }} -n ${{ env.APP_NAMESPACE }} &>/dev/null; then
+            echo "Uninstalling Helm release: ${{ env.HELM_RELEASE }}"
+            helm uninstall ${{ env.HELM_RELEASE }} -n ${{ env.APP_NAMESPACE }} --wait --timeout 3m
+          else
+            echo "Helm release not found — skipping"
+          fi
+
+      - name: Delete namespace
+        run: |
+          kubectl delete namespace ${{ env.APP_NAMESPACE }} --ignore-not-found=true
+
+      - name: Wait for ALB to be deleted
+        run: |
+          echo "⏳ Waiting 60s for AWS to clean up the ALB..."
+          sleep 60
+
+  ##############################################################################
+  # Terraform Destroy — tears down EKS, VPC, IAM, S3 app bucket, etc.
+  # Skipped if destroy_app_only=true
+  ##############################################################################
+  terraform-destroy:
+    name: 🔥 Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: destroy-app
+    if: ${{ !inputs.destroy_app_only }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Destroy
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform destroy \
+            -var="db_password=dummy-for-destroy" \
+            -auto-approve \
+            -input=false
+        env:
+          TF_VAR_aws_region:     ${{ env.AWS_REGION }}
+          TF_VAR_aws_account_id: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Summary
+        run: |
+          echo "## 💣 Destroy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All infrastructure has been destroyed." >> $GITHUB_STEP_SUMMARY
+          echo "The Terraform state bucket \`golden-path-tfstate-${{ env.AWS_ACCOUNT_ID }}\` was **NOT** deleted." >> $GITHUB_STEP_SUMMARY
+          echo "Run the bootstrap destroy manually if you want to remove it." >> $GITHUB_STEP_SUMMARY
