@@ -47,9 +47,64 @@ resource "aws_eks_cluster" "this" {
     endpoint_public_access  = true # set to false in hardened prod
   }
 
+  # Use EKS Access Entries (modern approach — no aws-auth ConfigMap needed)
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+}
+
+# ─── EKS Access Entries ───────────────────────────────────────────────────────
+# Grants cluster-admin to the GitHub Actions role and an optional admin IAM role.
+# This replaces manually editing the aws-auth ConfigMap.
+
+resource "aws_eks_access_entry" "github_actions" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.github_actions_role_arn
+  type          = "STANDARD"
+
+  depends_on = [aws_eks_cluster.this]
+}
+
+resource "aws_eks_access_policy_association" "github_actions_admin" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.github_actions_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.github_actions]
+}
+
+# Optional: grant your personal IAM user/role console access too
+resource "aws_eks_access_entry" "admin" {
+  count = var.admin_iam_role_arn != "" ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.admin_iam_role_arn
+  type          = "STANDARD"
+
+  depends_on = [aws_eks_cluster.this]
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  count = var.admin_iam_role_arn != "" ? 1 : 0
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.admin_iam_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.admin]
 }
 
 # ─── OIDC Provider (required for IRSA) ───────────────────────────────────────
@@ -160,6 +215,43 @@ resource "aws_eks_node_group" "spot" {
   }
 }
 
+# ─── EBS CSI Driver IAM Role (required by the addon) ─────────────────────────
+# The EBS CSI driver needs to call EC2 APIs to manage volumes.
+# Without this role the addon pod hangs in CREATING indefinitely.
+data "aws_iam_policy_document" "ebs_csi_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.this.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${var.cluster_name}-ebs-csi-role"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
 # ─── EKS Add-ons ─────────────────────────────────────────────────────────────
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.this.name
@@ -180,7 +272,12 @@ resource "aws_eks_addon" "kube_proxy" {
 }
 
 resource "aws_eks_addon" "aws_ebs_csi_driver" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "aws-ebs-csi-driver"
-  depends_on   = [aws_eks_node_group.on_demand]
+  cluster_name             = aws_eks_cluster.this.name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = aws_iam_role.ebs_csi.arn
+
+  depends_on = [
+    aws_eks_node_group.on_demand,
+    aws_iam_role_policy_attachment.ebs_csi,
+  ]
 }

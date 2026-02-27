@@ -51,7 +51,7 @@ variable "public_subnet_cidrs" {
 variable "eks_cluster_version" {
   description = "Kubernetes version for the EKS cluster"
   type        = string
-  default     = "1.29"
+  default     = "1.32"
 }
 
 # On-Demand node group (fallback)
@@ -96,6 +96,19 @@ variable "spot_min_size" {
 variable "spot_max_size" {
   type    = number
   default = 10
+}
+
+# ─── Access Control ──────────────────────────────────────────────────────────
+variable "github_actions_role_arn" {
+  description = "ARN of the GitHub Actions IAM role — granted EKS cluster-admin"
+  type        = string
+  default     = "arn:aws:iam::825566110381:role/GitHubActionsRole"
+}
+
+variable "admin_iam_role_arn" {
+  description = "Optional: your personal IAM role ARN for local kubectl/console access"
+  type        = string
+  default     = ""   # Set via TF_VAR_admin_iam_role_arn or --var in CI
 }
 
 # ─── Application ─────────────────────────────────────────────────────────────
