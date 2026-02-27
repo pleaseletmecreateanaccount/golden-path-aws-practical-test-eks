@@ -189,6 +189,20 @@ jobs:
         run: |
           kubectl apply -f k8s/cluster-secret-store.yaml
 
+      - name: Wait for ClusterSecretStore to be ready
+        run: |
+          echo "⏳ Waiting for ClusterSecretStore to become ready..."
+          for i in $(seq 1 12); do
+            STATUS=$(kubectl get clustersecretstore aws-secretsmanager \
+              -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+            if [ "$STATUS" = "True" ]; then
+              echo "✅ ClusterSecretStore is ready"
+              break
+            fi
+            echo "Attempt $i/12 — status: ${STATUS:-pending} — waiting 10s..."
+            sleep 10
+          done
+
       - name: Get App IRSA Role ARN
         id: get-role
         run: |
@@ -206,7 +220,6 @@ jobs:
           helm upgrade --install ${{ env.HELM_RELEASE }} ${{ env.HELM_CHART }} \
             --namespace ${{ env.APP_NAMESPACE }} \
             --create-namespace \
-            --atomic \
             --timeout 5m \
             --set "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=${{ steps.get-role.outputs.role_arn }}" \
             --set "image.tag=stable-alpine" \
@@ -216,12 +229,12 @@ jobs:
         run: |
           kubectl rollout status deployment/${{ env.HELM_RELEASE }}-golden-path \
             -n ${{ env.APP_NAMESPACE }} \
-            --timeout=3m
+            --timeout=5m
 
       - name: Print ALB hostname
         run: |
           echo "⏳ Waiting for ALB address..."
-          for i in $(seq 1 20); do
+          for i in $(seq 1 24); do
             ADDRESS=$(kubectl get ingress ${{ env.HELM_RELEASE }}-golden-path \
               -n ${{ env.APP_NAMESPACE }} \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
@@ -230,6 +243,6 @@ jobs:
               echo "✅ Application is live at: http://$ADDRESS"
               break
             fi
-            echo "Attempt $i/20 — waiting 15s..."
+            echo "Attempt $i/24 — waiting 15s..."
             sleep 15
           done

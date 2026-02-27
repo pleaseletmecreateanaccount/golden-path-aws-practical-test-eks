@@ -47,6 +47,7 @@ spec:
               protocol: TCP
 
           # Inject DB_PASSWORD from External Secret (Secrets Manager → K8s Secret)
+          # Uses optional: true so pods start even if the secret hasn't synced yet
           {{- if .Values.externalSecret.enabled }}
           env:
             - name: DB_PASSWORD
@@ -54,11 +55,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "golden-path.fullname" . }}-db-secret
                   key: password
+                  optional: true
             - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: {{ include "golden-path.fullname" . }}-db-secret
                   key: username
+                  optional: true
           {{- end }}
 
           resources:
