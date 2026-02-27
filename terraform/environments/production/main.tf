@@ -125,6 +125,9 @@ resource "helm_release" "aws_load_balancer_controller" {
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
   version    = "1.7.1"
+  wait          = true
+  wait_for_jobs = true
+  timeout       = 300
 
   set {
     name  = "clusterName"
@@ -165,13 +168,19 @@ resource "helm_release" "external_secrets" {
   version    = "0.9.11"
 
   create_namespace = true
+  wait             = true
+  wait_for_jobs    = true
+  timeout          = 300
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = module.irsa.external_secrets_role_arn
   }
 
-  depends_on = [module.eks, module.irsa]
+  # Must wait for ALB controller to be fully ready — its webhook intercepts
+  # all service/ingress mutations including those triggered during ESO install.
+  # Without this, ESO install hits "no endpoints available for aws-load-balancer-webhook-service".
+  depends_on = [module.eks, module.irsa, helm_release.aws_load_balancer_controller]
 }
 
 ##############################################################################
