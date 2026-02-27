@@ -137,6 +137,62 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
+      - name: Force cleanup leftover ENIs and EIPs in VPC
+        run: |
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --region ${{ env.AWS_REGION }} \
+            --filters "Name=tag:Project,Values=golden-path" \
+            --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
+
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "No VPC found — skipping ENI cleanup"
+          else
+            echo "Found VPC: $VPC_ID — cleaning up leftover ENIs..."
+            ENI_IDS=$(aws ec2 describe-network-interfaces \
+              --region ${{ env.AWS_REGION }} \
+              --filters "Name=vpc-id,Values=$VPC_ID" "Name=status,Values=available" \
+              --query "NetworkInterfaces[*].NetworkInterfaceId" \
+              --output text)
+            for ENI in $ENI_IDS; do
+              echo "Deleting ENI: $ENI"
+              aws ec2 delete-network-interface \
+                --region ${{ env.AWS_REGION }} \
+                --network-interface-id $ENI || true
+            done
+
+            echo "Releasing any leftover EIPs associated with VPC..."
+            EIP_ALLOCS=$(aws ec2 describe-addresses \
+              --region ${{ env.AWS_REGION }} \
+              --filters "Name=domain,Values=vpc" \
+              --query "Addresses[?AssociationId==null].AllocationId" \
+              --output text)
+            for EIP in $EIP_ALLOCS; do
+              echo "Releasing EIP: $EIP"
+              aws ec2 release-address \
+                --region ${{ env.AWS_REGION }} \
+                --allocation-id $EIP || true
+            done
+          fi
+
+      - name: Wait for ALB and ENIs to be fully deleted
+        run: |
+          echo "⏳ Waiting for ALB golden-path-alb to be deleted..."
+          for i in $(seq 1 24); do
+            COUNT=$(aws elbv2 describe-load-balancers \
+              --region ${{ env.AWS_REGION }} \
+              --query "LoadBalancers[?contains(LoadBalancerName, 'golden-path')].LoadBalancerArn" \
+              --output text | wc -w)
+            if [ "$COUNT" -eq 0 ]; then
+              echo "✅ ALB is gone"
+              break
+            fi
+            echo "Attempt $i/24 — ALB still exists, waiting 15s..."
+            sleep 15
+          done
+
+          echo "⏳ Waiting 30s for ENIs to be released..."
+          sleep 30
+
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
         run: terraform init -input=false
