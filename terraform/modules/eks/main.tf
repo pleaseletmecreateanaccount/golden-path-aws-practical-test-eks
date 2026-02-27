@@ -166,6 +166,22 @@ resource "aws_eks_node_group" "spot" {
   }
 }
 
+# ─── Node Security Group — Allow ALB → Pod traffic ───────────────────────────
+# With target-type: ip, the ALB sends traffic directly to pod IPs via the node
+# ENI. The cluster security group (auto-created by EKS) covers node-to-node and
+# API-to-node, but doesn't allow inbound from external ALB security groups.
+# This rule opens port range 1025-65535 (ephemeral/NodePort range) from within
+# the VPC so ALB health checks and traffic can reach pods on any port.
+resource "aws_security_group_rule" "alb_to_nodes" {
+  type              = "ingress"
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = [var.vpc_cidr]
+  security_group_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  description       = "Allow all intra-VPC TCP to nodes (ALB health checks and pod traffic)"
+}
+
 # ─── EBS CSI Driver IAM Role (required by the addon) ─────────────────────────
 # The EBS CSI driver needs to call EC2 APIs to manage volumes.
 # Without this role the addon pod hangs in CREATING indefinitely.
