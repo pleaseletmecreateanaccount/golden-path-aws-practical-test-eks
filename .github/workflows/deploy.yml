@@ -215,6 +215,23 @@ jobs:
             echo "role_arn=$(terraform output -raw app_irsa_role_arn)" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Clean up orphaned ALB security groups
+        run: |
+          echo "Checking for orphaned ALB security groups..."
+          SG_IDS=$(aws ec2 describe-security-groups \
+            --region ${{ env.AWS_REGION }} \
+            --filters "Name=tag-key,Values=elbv2.k8s.aws/cluster" \
+            --query "SecurityGroups[?length(Tags[?Key=='elbv2.k8s.aws/cluster' && Value=='${{ env.CLUSTER_NAME }}']) > \`0\`].GroupId" \
+            --output text)
+          if [ -n "$SG_IDS" ]; then
+            for SG_ID in $SG_IDS; do
+              echo "Deleting orphaned security group: $SG_ID"
+              aws ec2 delete-security-group --group-id $SG_ID --region ${{ env.AWS_REGION }} || echo "Could not delete $SG_ID — may still be in use, skipping"
+            done
+          else
+            echo "No orphaned security groups found"
+          fi
+
       - name: Helm Upgrade / Install
         run: |
           helm upgrade --install ${{ env.HELM_RELEASE }} ${{ env.HELM_CHART }} \

@@ -72,90 +72,13 @@ resource "aws_iam_role" "alb_controller" {
   assume_role_policy = data.aws_iam_policy_document.oidc_trust["alb_controller"].json
 }
 
-# The official AWS LBC policy document (sourced from the AWS LBC repo)
-data "aws_iam_policy_document" "alb_controller" {
-  statement {
-    sid    = "AllowALBController"
-    actions = [
-      "iam:CreateServiceLinkedRole",
-      "ec2:DescribeAccountAttributes", "ec2:DescribeAddresses",
-      "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways",
-      "ec2:DescribeVpcs", "ec2:DescribeVpcPeeringConnections",
-      "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups",
-      "ec2:DescribeInstances", "ec2:DescribeNetworkInterfaces",
-      "ec2:DescribeTags", "ec2:GetCoipPoolUsage",
-      "ec2:DescribeCoipPools", "elasticloadbalancing:DescribeLoadBalancers",
-      "elasticloadbalancing:DescribeLoadBalancerAttributes",
-      "elasticloadbalancing:DescribeListeners",
-      "elasticloadbalancing:DescribeListenerCertificates",
-      "elasticloadbalancing:DescribeSSLPolicies",
-      "elasticloadbalancing:DescribeRules",
-      "elasticloadbalancing:DescribeTargetGroups",
-      "elasticloadbalancing:DescribeTargetGroupAttributes",
-      "elasticloadbalancing:DescribeTargetHealth",
-      "elasticloadbalancing:DescribeTags",
-    ]
-    resources = ["*"]
-  }
-
-  statement {
-    sid = "AllowALBMutations"
-    actions = [
-      "cognito-idp:DescribeUserPoolClient",
-      "acm:ListCertificates", "acm:DescribeCertificate",
-      "iam:ListServerCertificates", "iam:GetServerCertificate",
-      "waf-regional:GetWebACL", "waf-regional:GetWebACLForResource",
-      "waf-regional:AssociateWebACL", "waf-regional:DisassociateWebACL",
-      "wafv2:GetWebACL", "wafv2:GetWebACLForResource",
-      "wafv2:AssociateWebACL", "wafv2:DisassociateWebACL",
-      "shield:GetSubscriptionState", "shield:DescribeProtection",
-      "shield:CreateProtection", "shield:DeleteProtection",
-      "ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress",
-      "ec2:CreateSecurityGroup",
-      "ec2:CreateTags", "ec2:DeleteTags",
-      "ec2:ModifyNetworkInterfaceAttribute",
-      "ec2:DescribeNetworkInterfaceAttribute",
-      "elasticloadbalancing:AddListenerCertificates",
-      "elasticloadbalancing:RemoveListenerCertificates",
-      "elasticloadbalancing:ModifyListener",
-      "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags",
-      "elasticloadbalancing:ModifyLoadBalancerAttributes",
-      "elasticloadbalancing:SetIpAddressType",
-      "elasticloadbalancing:SetSecurityGroups",
-      "elasticloadbalancing:SetSubnets",
-      "elasticloadbalancing:DeleteLoadBalancer",
-      "elasticloadbalancing:ModifyTargetGroup",
-      "elasticloadbalancing:ModifyTargetGroupAttributes",
-      "elasticloadbalancing:DeleteTargetGroup",
-      "elasticloadbalancing:RegisterTargets",
-      "elasticloadbalancing:DeregisterTargets",
-      "elasticloadbalancing:SetWebAcl",
-      "elasticloadbalancing:DescribeListenerAttributes",
-      "elasticloadbalancing:ModifyListenerAttributes",
-    ]
-    resources = ["*"]
-  }
-
-  statement {
-    sid = "AllowALBCreate"
-    actions = [
-      "elasticloadbalancing:CreateLoadBalancer",
-      "elasticloadbalancing:CreateListener",
-      "elasticloadbalancing:CreateRule",
-      "elasticloadbalancing:CreateTargetGroup",
-    ]
-    resources = ["*"]
-    condition {
-      test     = "Null"
-      variable = "aws:RequestTag/elbv2.k8s.aws/cluster"
-      values   = ["false"]
-    }
-  }
-}
-
+# Use the official AWS-managed policy downloaded from the AWS LBC repo.
+# This avoids maintaining our own copy which is easy to get wrong (as seen
+# with the missing ec2:DeleteSecurityGroup).
+# Source: https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.1/docs/install/iam_policy.json
 resource "aws_iam_policy" "alb_controller" {
   name   = "${var.cluster_name}-alb-controller-policy"
-  policy = data.aws_iam_policy_document.alb_controller.json
+  policy = file("${path.module}/alb-controller-policy.json")
 }
 
 resource "aws_iam_role_policy_attachment" "alb_controller" {
