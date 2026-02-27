@@ -4,10 +4,10 @@
 
 import {
   to = module.eks.aws_eks_access_entry.github_actions
-  id = "golden-path-production/arn:aws:iam::825566110381:role/GitHubActionsRole"
+  id = "golden-path-production,arn:aws:iam::825566110381:role/GitHubActionsRole"
 }
 
 import {
   to = module.eks.aws_eks_access_policy_association.github_actions_admin
-  id = "golden-path-production/arn:aws:iam::825566110381:role/GitHubActionsRole/arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  id = "golden-path-production#arn:aws:iam::825566110381:role/GitHubActionsRole#arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
