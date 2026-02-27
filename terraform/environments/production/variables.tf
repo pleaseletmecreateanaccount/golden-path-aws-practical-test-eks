@@ -51,7 +51,7 @@ variable "public_subnet_cidrs" {
 variable "eks_cluster_version" {
   description = "Kubernetes version for the EKS cluster"
   type        = string
-  default     = "1.32"
+  default     = "1.33"
 }
 
 # On-Demand node group (fallback)
