@@ -125,6 +125,9 @@ resource "helm_release" "aws_load_balancer_controller" {
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
   version    = "1.7.1"
+  wait          = true
+  wait_for_jobs = true
+  timeout       = 300
 
   set {
     name  = "clusterName"
@@ -154,6 +157,22 @@ resource "helm_release" "aws_load_balancer_controller" {
   depends_on = [module.eks, module.irsa]
 }
 
+# Wait for the ALB controller webhook endpoint to be fully available.
+# `wait = true` on the helm_release only waits for pod readiness — the webhook
+# service endpoint takes a few extra seconds to register in kube-proxy.
+# Without this, ESO install hits "no endpoints available for aws-load-balancer-webhook-service".
+resource "null_resource" "wait_for_alb_webhook" {
+  triggers = {
+    alb_release_id = helm_release.aws_load_balancer_controller.id
+  }
+
+  provisioner "local-exec" {
+    command = "echo 'Waiting 30s for ALB webhook endpoint to register...' && sleep 30"
+  }
+
+  depends_on = [helm_release.aws_load_balancer_controller]
+}
+
 ##############################################################################
 # Helm: External Secrets Operator
 ##############################################################################
@@ -165,13 +184,17 @@ resource "helm_release" "external_secrets" {
   version    = "0.9.11"
 
   create_namespace = true
+  wait             = true
+  wait_for_jobs    = true
+  timeout          = 300
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = module.irsa.external_secrets_role_arn
   }
 
-  depends_on = [module.eks, module.irsa]
+  # Wait for ALB webhook to be fully registered before installing ESO.
+  depends_on = [module.eks, module.irsa, null_resource.wait_for_alb_webhook]
 }
 
 ##############################################################################
