@@ -187,24 +187,36 @@ jobs:
             done
           fi
 
-      - name: Wait for ALB and ENIs to be fully deleted
+      - name: Force delete ALB and target groups
         run: |
-          echo "⏳ Waiting for ALB golden-path-alb to be deleted..."
-          for i in $(seq 1 24); do
-            COUNT=$(aws elbv2 describe-load-balancers \
+          echo "Looking for golden-path ALBs to delete..."
+          ALB_ARNS=$(aws elbv2 describe-load-balancers \
+            --region ${{ env.AWS_REGION }} \
+            --query "LoadBalancers[?contains(LoadBalancerName, 'golden-path')].LoadBalancerArn" \
+            --output text)
+          for ARN in $ALB_ARNS; do
+            echo "Deleting ALB: $ARN"
+            aws elbv2 delete-load-balancer \
               --region ${{ env.AWS_REGION }} \
-              --query "LoadBalancers[?contains(LoadBalancerName, 'golden-path')].LoadBalancerArn" \
-              --output text | wc -w)
-            if [ "$COUNT" -eq 0 ]; then
-              echo "✅ ALB is gone"
-              break
-            fi
-            echo "Attempt $i/24 — ALB still exists, waiting 15s..."
-            sleep 15
+              --load-balancer-arn $ARN
           done
 
-          echo "⏳ Waiting 30s for ENIs to be released..."
-          sleep 30
+          if [ -n "$ALB_ARNS" ]; then
+            echo "⏳ Waiting 30s for ALB deletion to propagate..."
+            sleep 30
+          fi
+
+          echo "Deleting leftover target groups..."
+          TG_ARNS=$(aws elbv2 describe-target-groups \
+            --region ${{ env.AWS_REGION }} \
+            --query "TargetGroups[?contains(TargetGroupName, 'k8s-goldenpa')].TargetGroupArn" \
+            --output text)
+          for ARN in $TG_ARNS; do
+            echo "Deleting target group: $ARN"
+            aws elbv2 delete-target-group \
+              --region ${{ env.AWS_REGION }} \
+              --target-group-arn $ARN || true
+          done
 
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
