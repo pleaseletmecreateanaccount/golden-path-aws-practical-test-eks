@@ -82,6 +82,18 @@ jobs:
         with:
           version: "3.14.0"
 
+      - name: Remove ingress finalizers (prevents stuck uninstall)
+        run: |
+          echo "Patching out ingress finalizers to unblock deletion..."
+          for INGRESS in $(kubectl get ingress -n ${{ env.APP_NAMESPACE }} \
+            -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true); do
+            echo "Removing finalizer from ingress: $INGRESS"
+            kubectl patch ingress $INGRESS -n ${{ env.APP_NAMESPACE }} \
+              --type=json \
+              -p='[{"op":"remove","path":"/metadata/finalizers"}]' \
+              2>/dev/null || true
+          done
+
       - name: Uninstall Helm release
         run: |
           if helm status ${{ env.HELM_RELEASE }} -n ${{ env.APP_NAMESPACE }} &>/dev/null; then
