@@ -231,6 +231,27 @@ jobs:
             -n ${{ env.APP_NAMESPACE }} \
             --timeout=5m
 
+      - name: 🔍 Debug — ALB & Ingress Status
+        if: always()
+        run: |
+          echo "=== Ingress ==="
+          kubectl get ingress -n ${{ env.APP_NAMESPACE }} -o wide
+
+          echo "=== Ingress YAML ==="
+          kubectl get ingress -n ${{ env.APP_NAMESPACE }} -o yaml
+
+          echo "=== IngressClass ==="
+          kubectl get ingressclass
+
+          echo "=== ALB Controller Logs ==="
+          kubectl logs -n kube-system \
+            -l app.kubernetes.io/name=aws-load-balancer-controller \
+            --tail=80
+
+          echo "=== Pods ==="
+          kubectl get pods -n ${{ env.APP_NAMESPACE }}
+          kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+
       - name: Print ALB hostname
         run: |
           echo "⏳ Waiting for ALB address..."
