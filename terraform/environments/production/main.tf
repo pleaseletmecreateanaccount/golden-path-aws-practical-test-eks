@@ -202,37 +202,6 @@ resource "kubernetes_namespace" "app" {
 }
 
 ##############################################################################
-# Kubernetes: ClusterSecretStore for External Secrets
-##############################################################################
-resource "kubernetes_manifest" "cluster_secret_store" {
-  manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
-    kind       = "ClusterSecretStore"
-    metadata = {
-      name = "aws-secretsmanager"
-    }
-    spec = {
-      provider = {
-        aws = {
-          service = "SecretsManager"
-          region  = var.aws_region
-          auth = {
-            jwt = {
-              serviceAccountRef = {
-                name      = var.external_secrets_service_account
-                namespace = "external-secrets"
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [helm_release.external_secrets]
-}
-
-##############################################################################
 # CloudWatch Dashboard — 4 Golden Signals
 ##############################################################################
 resource "aws_cloudwatch_dashboard" "golden_signals" {

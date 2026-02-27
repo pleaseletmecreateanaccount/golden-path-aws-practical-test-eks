@@ -178,6 +178,17 @@ jobs:
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Wait for External Secrets Operator CRDs
+        run: |
+          echo "⏳ Waiting for ESO CRDs to be established..."
+          kubectl wait --for=condition=established \
+            crd/clustersecretstores.external-secrets.io \
+            --timeout=120s
+
+      - name: Apply ClusterSecretStore
+        run: |
+          kubectl apply -f k8s/cluster-secret-store.yaml
+
       - name: Get App IRSA Role ARN
         id: get-role
         run: |

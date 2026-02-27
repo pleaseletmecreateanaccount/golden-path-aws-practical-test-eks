@@ -33,7 +33,8 @@ provider "aws" {
   }
 }
 
-# These providers are configured after EKS cluster is created
+# Kubernetes + Helm providers use the same exec-based auth.
+# They dynamically call `aws eks get-token` so no kubeconfig file is needed.
 provider "kubernetes" {
   host                   = module.eks.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
