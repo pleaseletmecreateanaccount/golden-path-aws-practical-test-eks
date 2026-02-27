@@ -31,10 +31,6 @@ module "eks" {
   aws_region         = var.aws_region
   aws_account_id     = var.aws_account_id
 
-  # EKS Access Entries — grants cluster-admin to these IAM principals
-  github_actions_role_arn = var.github_actions_role_arn
-  admin_iam_role_arn      = var.admin_iam_role_arn
-
   # Node group sizing
   node_instance_types       = var.node_instance_types
   node_desired_size         = var.node_desired_size

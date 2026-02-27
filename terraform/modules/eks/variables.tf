@@ -12,14 +12,3 @@ variable "spot_instance_types"  { type = list(string) }
 variable "spot_desired_size"    { type = number }
 variable "spot_min_size"        { type = number }
 variable "spot_max_size"        { type = number }
-
-variable "github_actions_role_arn" {
-  description = "ARN of the GitHub Actions IAM role — granted cluster-admin"
-  type        = string
-}
-
-variable "admin_iam_role_arn" {
-  description = "Optional: ARN of an additional IAM role/user for console/local access"
-  type        = string
-  default     = ""
-}

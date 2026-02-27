@@ -58,55 +58,6 @@ resource "aws_eks_cluster" "this" {
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
 }
 
-# ─── EKS Access Entries ───────────────────────────────────────────────────────
-# Grants cluster-admin to the GitHub Actions role and an optional admin IAM role.
-# This replaces manually editing the aws-auth ConfigMap.
-
-resource "aws_eks_access_entry" "github_actions" {
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.github_actions_role_arn
-  type          = "STANDARD"
-
-  depends_on = [aws_eks_cluster.this]
-}
-
-resource "aws_eks_access_policy_association" "github_actions_admin" {
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.github_actions_role_arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-
-  access_scope {
-    type = "cluster"
-  }
-
-  depends_on = [aws_eks_access_entry.github_actions]
-}
-
-# Optional: grant your personal IAM user/role console access too
-resource "aws_eks_access_entry" "admin" {
-  count = var.admin_iam_role_arn != "" ? 1 : 0
-
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.admin_iam_role_arn
-  type          = "STANDARD"
-
-  depends_on = [aws_eks_cluster.this]
-}
-
-resource "aws_eks_access_policy_association" "admin" {
-  count = var.admin_iam_role_arn != "" ? 1 : 0
-
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.admin_iam_role_arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-
-  access_scope {
-    type = "cluster"
-  }
-
-  depends_on = [aws_eks_access_entry.admin]
-}
-
 # ─── OIDC Provider (required for IRSA) ───────────────────────────────────────
 data "tls_certificate" "cluster" {
   url = aws_eks_cluster.this.identity[0].oidc[0].issuer
