@@ -72,17 +72,28 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
+        id: kubeconfig
         run: |
-          aws eks update-kubeconfig \
+          if aws eks describe-cluster \
             --region ${{ env.AWS_REGION }} \
-            --name ${{ env.CLUSTER_NAME }}
+            --name ${{ env.CLUSTER_NAME }} &>/dev/null; then
+            aws eks update-kubeconfig \
+              --region ${{ env.AWS_REGION }} \
+              --name ${{ env.CLUSTER_NAME }}
+            echo "cluster_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ Cluster ${{ env.CLUSTER_NAME }} not found — skipping Helm/kubectl steps"
+            echo "cluster_exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Helm
+        if: steps.kubeconfig.outputs.cluster_exists == 'true'
         uses: azure/setup-helm@v3
         with:
           version: "3.14.0"
 
       - name: Remove ingress finalizers (prevents stuck uninstall)
+        if: steps.kubeconfig.outputs.cluster_exists == 'true'
         run: |
           echo "Patching out ingress finalizers to unblock deletion..."
           for INGRESS in $(kubectl get ingress -n ${{ env.APP_NAMESPACE }} \
@@ -95,6 +106,7 @@ jobs:
           done
 
       - name: Uninstall Helm release
+        if: steps.kubeconfig.outputs.cluster_exists == 'true'
         run: |
           if helm status ${{ env.HELM_RELEASE }} -n ${{ env.APP_NAMESPACE }} &>/dev/null; then
             echo "Uninstalling Helm release: ${{ env.HELM_RELEASE }}"
@@ -104,6 +116,7 @@ jobs:
           fi
 
       - name: Delete namespace
+        if: steps.kubeconfig.outputs.cluster_exists == 'true'
         run: |
           kubectl delete namespace ${{ env.APP_NAMESPACE }} --ignore-not-found=true
 
