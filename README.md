@@ -5,52 +5,7 @@
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────── AWS ap-southeast-1 ────────────────────────────────────┐
-│                                                                                         │
-│   GitHub Actions (OIDC)  ──► IAM Role ──► Terraform / Helm                            │
-│                                                                                         │
-│  ┌──────────────────────────────── VPC 10.0.0.0/16 ───────────────────────────────┐   │
-│  │                                                                                  │   │
-│  │  ┌─── AZ-a ────────────┐  ┌─── AZ-b ────────────┐  ┌─── AZ-c ────────────┐   │   │
-│  │  │  Public 10.0.101/24 │  │  Public 10.0.102/24  │  │  Public 10.0.103/24 │   │   │
-│  │  │  ┌─────────────┐    │  │  ┌─────────────┐     │  │  ┌─────────────┐    │   │   │
-│  │  │  │   NAT GW    │    │  │  │   NAT GW    │     │  │  │   NAT GW    │    │   │   │
-│  │  │  └─────────────┘    │  │  └─────────────┘     │  │  └─────────────┘    │   │   │
-│  │  │                     │  │                       │  │                     │   │   │
-│  │  │  Priv 10.0.1/24     │  │  Priv 10.0.2/24      │  │  Priv 10.0.3/24    │   │   │
-│  │  │  ┌──────────────────┤  ├───────────────────────┤  ├──────────────────┐ │   │   │
-│  │  │  │   EKS Worker Nodes (Spot + On-Demand Fallback)                    │ │   │   │
-│  │  │  │                                                                    │ │   │   │
-│  │  │  │  ┌─────────────────────────────────────────────────────────────┐  │ │   │   │
-│  │  │  │  │  Namespace: golden-path                                      │  │ │   │   │
-│  │  │  │  │                                                              │  │ │   │   │
-│  │  │  │  │   [Deployment: nginx] ──► [HPA: 2-10 replicas @ 70% CPU]   │  │ │   │   │
-│  │  │  │  │          │                                                   │  │ │   │   │
-│  │  │  │  │   [ServiceAccount + IRSA] ──► S3 (no static keys)          │  │ │   │   │
-│  │  │  │  │          │                                                   │  │ │   │   │
-│  │  │  │  │   [ExternalSecret] ──► AWS Secrets Manager ──► K8s Secret  │  │ │   │   │
-│  │  │  │  └─────────────────────────────────────────────────────────────┘  │ │   │   │
-│  │  │  │                                                                    │ │   │   │
-│  │  │  │  ┌────────────────────┐  ┌──────────────────────────────────────┐ │ │   │   │
-│  │  │  │  │  kube-system:       │  │  external-secrets:                   │ │ │   │   │
-│  │  │  │  │  ALB Controller    │  │  External Secrets Operator           │ │ │   │   │
-│  │  │  │  │  Metrics Server    │  │  (syncs Secrets Manager → K8s)      │ │ │   │   │
-│  │  │  │  └────────────────────┘  └──────────────────────────────────────┘ │ │   │   │
-│  │  └──┴──────────────────────────────────────────────────────────────────┘ │   │   │
-│  └──────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                         │
-│        Internet ──► [Internet Gateway] ──► [Application Load Balancer]                 │
-│                           (public subnets)      (routes to pods in private subnets)     │
-│                                                                                         │
-│  ┌────────────────────────────────────────────────────────────────────────────────┐   │
-│  │  Supporting Services                                                            │   │
-│  │  S3: golden-path-app-data (IRSA access)  |  S3: tfstate (backend)             │   │
-│  │  DynamoDB: tfstate-lock                  |  Secrets Manager: db-password       │   │
-│  │  CloudWatch Dashboard: 4 Golden Signals  |  CloudWatch Container Insights      │   │
-│  └────────────────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-```
+![Golden Path EKS High Level Architecture](EKS-Golden-Path-Diagram.png)
 
 ## Repository Structure
 
