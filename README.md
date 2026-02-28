@@ -1,7 +1,7 @@
 # 🛤️ Golden Path — EKS Platform on AWS
 
 > **Practical Test Submission** — Platform Engineer (AWS)
-> Region: `ap-southeast-1` | Account: `825566110381`
+
 
 ## Architecture Overview
 
@@ -47,17 +47,6 @@
 
 ---
 
-## Prerequisites
-
-| Tool | Version | Install |
-|------|---------|---------|
-| Terraform | ≥ 1.6 | [terraform.io](https://terraform.io) |
-| AWS CLI | ≥ 2.x | `brew install awscli` |
-| kubectl | ≥ 1.28 | `brew install kubectl` |
-| Helm | ≥ 3.14 | `brew install helm` |
-| jq | any | `brew install jq` |
-
----
 
 ## How to Run
 
@@ -75,8 +64,8 @@ terraform init
 terraform apply
 
 # Note the outputs:
-# github_actions_role_arn = "arn:aws:iam::825566110381:role/github-actions-golden-path"
-# s3_bucket_name = "golden-path-tfstate-825566110381"
+# github_actions_role_arn
+# s3_bucket_name
 ```
 
 ### Step 2 — Configure GitHub Secrets & Variables
@@ -92,8 +81,8 @@ In your GitHub repository (`Settings → Secrets and variables → Actions`):
 **Variables:**
 | Name | Value |
 |------|-------|
-| `AWS_REGION` | `ap-southeast-1` |
-| `AWS_ACCOUNT_ID` | `825566110381` |
+| `AWS_REGION` | `` |
+| `AWS_ACCOUNT_ID` | `` |
 
 ### Step 3 — Deploy via GitHub Actions
 
@@ -142,7 +131,7 @@ Type `DESTROY` in the confirmation field. The workflow will:
 
 ### EKS (Managed Node Groups) vs ECS Fargate
 
-| Factor | EKS (chosen) | ECS Fargate |
+| Factor | EKS | ECS Fargate |
 |--------|-------------|-------------|
 | **Kubernetes ecosystem** | Full — HPA, RBAC, Helm, ExternalSecrets, custom controllers | Limited — no standard K8s tooling |
 | **Portability** | Workloads portable to any K8s cluster | AWS-locked |
@@ -217,16 +206,5 @@ helm upgrade --install golden-path ./helm/golden-path \
 ```
 
 ---
-
-## Cost Estimate (ap-southeast-1)
-
-| Resource | Est. Monthly Cost |
-|----------|------------------|
-| EKS Control Plane | ~$73 |
-| 2x Spot t3.medium | ~$10 |
-| 1x On-Demand t3.medium | ~$31 |
-| 3x NAT Gateway | ~$100 |
-| ALB | ~$20 |
-| **Total** | **~$234/mo** |
 
 > Use the **Destroy workflow** to reduce cost to ~$0 between tests. The NAT GW is the biggest cost; reduce to 1 AZ in dev to save ~$67.
