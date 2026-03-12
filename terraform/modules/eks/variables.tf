@@ -13,3 +13,7 @@ variable "spot_instance_types"  { type = list(string) }
 variable "spot_desired_size"    { type = number }
 variable "spot_min_size"        { type = number }
 variable "spot_max_size"        { type = number }
+variable "github_actions_role_arn" {
+  description = "GitHub Actions OIDC role allowed to manage the cluster"
+  type        = string
+}

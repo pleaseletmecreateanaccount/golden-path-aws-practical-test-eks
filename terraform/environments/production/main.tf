@@ -26,6 +26,7 @@ module "eks" {
 
   cluster_name       = "${var.project}-${var.environment}"
   cluster_version    = var.eks_cluster_version
+  github_actions_role_arn   = "arn:aws:iam::825566110381:role/GitHubActionsRole"
   vpc_id             = module.vpc.vpc_id
   vpc_cidr           = var.vpc_cidr
   private_subnet_ids = module.vpc.private_subnet_ids
@@ -44,6 +45,9 @@ module "eks" {
   spot_min_size             = var.spot_min_size
   spot_max_size             = var.spot_max_size
 }
+
+ 
+
 
 ##############################################################################
 # IRSA — IAM Roles for Service Accounts
