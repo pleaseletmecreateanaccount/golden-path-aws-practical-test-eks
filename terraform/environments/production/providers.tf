@@ -37,13 +37,6 @@ terraform {
     }
   }
 
-  backend "s3" {
-    bucket         = "golden-path-tfstate-825566110381"
-    key            = "production/terraform.tfstate"
-    region         = "ap-southeast-1"
-    encrypt        = true
-    dynamodb_table = "golden-path-terraform-locks"
-  }
 }
 
 # ── AWS provider ─────────────────────────────────────────────────────────────
@@ -51,7 +44,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# ── EKS cluster data — used by Kubernetes and Helm providers ─────────────────
+# ─ EKS cluster data — used by Kubernetes and Helm providers ─────────────────
 # try() makes this return null if the cluster doesn't exist yet (fresh deploy).
 # Without try(), terraform plan fails on a brand new environment because the
 # cluster endpoint is unknown and the providers cannot authenticate.
