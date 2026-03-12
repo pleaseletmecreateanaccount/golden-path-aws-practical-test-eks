@@ -27,6 +27,7 @@ module "eks" {
   cluster_name       = "${var.project}-${var.environment}"
   cluster_version    = var.eks_cluster_version
   vpc_id             = module.vpc.vpc_id
+  vpc_cidr           = var.vpc_cidr
   private_subnet_ids = module.vpc.private_subnet_ids
   aws_region         = var.aws_region
   aws_account_id     = var.aws_account_id
