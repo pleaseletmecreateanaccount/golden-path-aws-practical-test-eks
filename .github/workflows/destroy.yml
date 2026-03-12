@@ -69,10 +69,12 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region:     ${{ env.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.0'
 
       - name: Update kubeconfig
         id: kubeconfig
@@ -85,7 +87,7 @@ jobs:
               --name ${{ env.CLUSTER_NAME }}
             echo "cluster_exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "⚠️ Cluster ${{ env.CLUSTER_NAME }} not found — skipping Helm/kubectl steps"
+            echo "⚠️ Cluster not found"
             echo "cluster_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
