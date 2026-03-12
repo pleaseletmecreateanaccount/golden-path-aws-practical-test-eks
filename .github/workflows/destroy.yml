@@ -72,6 +72,9 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
 
       - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
         id: kubeconfig
         run: |
           if aws eks describe-cluster \
