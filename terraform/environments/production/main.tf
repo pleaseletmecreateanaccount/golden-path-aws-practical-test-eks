@@ -27,7 +27,6 @@ module "eks" {
   cluster_name       = "${var.project}-${var.environment}"
   cluster_version    = var.eks_cluster_version
   vpc_id             = module.vpc.vpc_id
-  vpc_cidr           = var.vpc_cidr
   private_subnet_ids = module.vpc.private_subnet_ids
   aws_region         = var.aws_region
   aws_account_id     = var.aws_account_id
@@ -118,112 +117,19 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 }
 
 ##############################################################################
-# Helm: AWS Load Balancer Controller
+# Helm and Kubernetes resources are intentionally NOT here.
+#
+# The Terraform Kubernetes and Helm providers authenticate to EKS at
+# plan time — before any resources are created. On a fresh deploy where
+# the EKS cluster does not yet exist, this causes:
+#
+#   "Kubernetes cluster unreachable: the server has asked for credentials"
+#
+# Solution: The deploy workflow applies AWS infrastructure first (this file),
+# then applies Helm/Kubernetes resources in a second targeted apply once
+# the cluster is live and reachable. See helm.tf for those resources and
+# the deploy workflow for the two-stage apply pattern.
 ##############################################################################
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  version    = "1.7.1"
-  wait          = true
-  wait_for_jobs = true
-  timeout       = 300
-
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.irsa.alb_controller_role_arn
-  }
-  set {
-    name  = "region"
-    value = var.aws_region
-  }
-  set {
-    name  = "vpcId"
-    value = module.vpc.vpc_id
-  }
-
-  depends_on = [module.eks, module.irsa]
-}
-
-# Wait for the ALB controller webhook endpoint to be fully available.
-# `wait = true` on the helm_release only waits for pod readiness — the webhook
-# service endpoint takes a few extra seconds to register in kube-proxy.
-# Without this, ESO install hits "no endpoints available for aws-load-balancer-webhook-service".
-resource "null_resource" "wait_for_alb_webhook" {
-  triggers = {
-    alb_release_id = helm_release.aws_load_balancer_controller.id
-  }
-
-  provisioner "local-exec" {
-    command = "echo 'Waiting 30s for ALB webhook endpoint to register...' && sleep 30"
-  }
-
-  depends_on = [helm_release.aws_load_balancer_controller]
-}
-
-##############################################################################
-# Helm: External Secrets Operator
-##############################################################################
-resource "helm_release" "external_secrets" {
-  name       = "external-secrets"
-  repository = "https://charts.external-secrets.io"
-  chart      = "external-secrets"
-  namespace  = "external-secrets"
-  version    = "0.9.11"
-
-  create_namespace = true
-  wait             = true
-  wait_for_jobs    = true
-  timeout          = 300
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.irsa.external_secrets_role_arn
-  }
-
-  # Wait for ALB webhook to be fully registered before installing ESO.
-  depends_on = [module.eks, module.irsa, null_resource.wait_for_alb_webhook]
-}
-
-##############################################################################
-# Helm: Metrics Server (required for HPA)
-##############################################################################
-resource "helm_release" "metrics_server" {
-  name       = "metrics-server"
-  repository = "https://kubernetes-sigs.github.io/metrics-server/"
-  chart      = "metrics-server"
-  namespace  = "kube-system"
-  version    = "3.11.0"
-
-  depends_on = [module.eks]
-}
-
-##############################################################################
-# Kubernetes: App Namespace
-##############################################################################
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.app_namespace
-    labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
-    }
-  }
-
-  depends_on = [module.eks]
-}
 
 ##############################################################################
 # CloudWatch Dashboard — 4 Golden Signals
