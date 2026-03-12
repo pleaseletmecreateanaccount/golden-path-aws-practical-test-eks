@@ -47,7 +47,11 @@ env:
 
 jobs:
   ##############################################################################
-  # Job 1 — Terraform Plan (runs on every push for review)
+  # Job 1 — Terraform Plan
+  # Uses -target to plan AWS resources only.
+  # Helm and Kubernetes providers fail at plan time when the cluster does not
+  # exist yet because they try to authenticate during provider initialization.
+  # The full Helm/K8s resources are applied in Stage 2 of the apply job.
   ##############################################################################
   terraform-plan:
     name: 📋 Terraform Plan
@@ -77,10 +81,20 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
-      - name: Terraform Plan (validation only)
+      - name: Terraform Plan (AWS resources only)
         working-directory: ${{ env.TF_DIR }}
         run: |
           terraform plan \
+            -target=module.vpc \
+            -target=module.eks \
+            -target=module.irsa \
+            -target=aws_s3_bucket.app_data \
+            -target=aws_s3_bucket_versioning.app_data \
+            -target=aws_s3_bucket_server_side_encryption_configuration.app_data \
+            -target=aws_s3_bucket_public_access_block.app_data \
+            -target=aws_secretsmanager_secret.db_password \
+            -target=aws_secretsmanager_secret_version.db_password \
+            -target=aws_cloudwatch_dashboard.golden_signals \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -input=false
         env:
